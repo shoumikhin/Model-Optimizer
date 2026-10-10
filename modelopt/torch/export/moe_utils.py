@@ -171,6 +171,15 @@ def _export_fused_experts_keep_fused(module: nn.Module, dtype: torch.dtype) -> N
         # the model and OOMing the GPU at scale. Plain tensor (single process): all experts.
         wdata = weight.data
         is_dt = DTensor is not None and isinstance(wdata, DTensor)
+        # weight_quantizers' length follows num_experts at _setup() time, in EITHER convention --
+        # so it can't be compared against num_experts read again here to tell them apart (that
+        # compares the same value to itself). What differs is the DTensor's GLOBAL dim-0 extent
+        # (wdata.shape[0]): FSDP2 only shards the weight *tensor* (the DTensor's .shape stays the
+        # global logical shape), so num_experts -- and weight_quantizers -- stay GLOBAL-sized and
+        # replicated per rank, matching wdata.shape[0] -> index by global_idx. Expert parallelism
+        # instead materializes only this rank's local experts as real submodules, so num_experts
+        # (and weight_quantizers) are LOCAL-sized, shorter than wdata.shape[0] -> index by local_idx.
+        quantizers_are_global = True
         if is_dt:
             mesh, placements = wdata.device_mesh, wdata.placements
             # A rank holding no experts would stack none and register no input scale, so the
@@ -186,6 +195,17 @@ def _export_fused_experts_keep_fused(module: nn.Module, dtype: torch.dtype) -> N
                             "needs every rank to hold an expert."
                         )
             local_w = wdata.to_local()
+            quantizers_are_global = len(weight_quantizers) == wdata.shape[0]
+            # Holds by construction today (weight_quantizers and the local weight are both
+            # properties of this rank's already-sharded module), but that was also true of the
+            # num_experts assumption this function used to make. A mismatch here would otherwise
+            # either IndexError (list too short) or silently mispair (list too long, extra rows
+            # never used) -- fail loudly and immediately instead of by shape further down.
+            if not quantizers_are_global:
+                assert len(weight_quantizers) == local_w.shape[0], (
+                    f"{proj}: {len(weight_quantizers)} local weight quantizer(s) but "
+                    f"{local_w.shape[0]} local expert row(s) -- expected them equal under EP."
+                )
             offset = _dtensor_dim0_offset(wdata)
             scale_placements = [
                 p if (isinstance(p, Shard) and p.dim == 0) else Replicate() for p in placements
@@ -200,7 +220,7 @@ def _export_fused_experts_keep_fused(module: nn.Module, dtype: torch.dtype) -> N
         weight_scale_2s: list[torch.Tensor] = []
         input_scale: torch.Tensor | None = None
         for local_idx, global_idx in enumerate(local_indices):
-            w_quantizer = weight_quantizers[global_idx]
+            w_quantizer = weight_quantizers[global_idx if quantizers_are_global else local_idx]
             w_slice = local_w[local_idx]
             # Uncalibrated-expert fallback: derive amax from this expert's local weight slice
             # (matches _export_fused_experts), so a never-routed expert still exports sane scales.
