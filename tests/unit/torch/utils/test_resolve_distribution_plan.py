@@ -288,7 +288,7 @@ _REMOTE_VLM = {"AutoModelForCausalLM": "m.KimiK25ForConditionalGeneration"}
     ("config", "require_lm_head", "trust_remote_code", "expected"),
     [
         (SimpleNamespace(architectures=["LlamaForCausalLM"]), True, False, AutoModelForCausalLM),
-        (_vlm_config(), False, False, AutoModel),
+        (_tiny_qwen2_5_vl(), False, False, AutoModel),
         (_vlm_config(auto_map=_REMOTE_VLM), True, True, AutoModelForCausalLM),
         (_vlm_config(auto_map=_REMOTE_VLM), True, False, AutoModel),
         (_tiny_qwen2_5_vl(), True, False, AutoModelForImageTextToText),
