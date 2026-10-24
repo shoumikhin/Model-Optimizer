@@ -303,7 +303,9 @@ _REMOTE_VLM = {"AutoModelForCausalLM": "m.KimiK25ForConditionalGeneration"}
         "unknown-vlm",
     ],
 )
-def test_the_class_that_builds_the_whole_model(config, require_lm_head, trust_remote_code, expected):
+def test_the_class_that_builds_the_whole_model(
+    config, require_lm_head, trust_remote_code, expected
+):
     """A VLM's AutoModel leaves the LM head out: with the head required it builds through the class
     that carries it, keeping the headless backbone only when no class recognizes the config. A remote
     class counts only when the checkpoint's code is trusted."""
