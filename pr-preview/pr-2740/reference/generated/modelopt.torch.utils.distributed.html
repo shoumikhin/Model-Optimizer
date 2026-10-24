@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="green" data-content_root="../../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>distributed - Model Optimizer 0.0.1.dev1+g98933ff7f</title><link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="env" href="modelopt.torch.utils.env.html" /><link rel="prev" title="dataset_utils" href="modelopt.torch.utils.dataset_utils.html" /><script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>distributed - Model Optimizer 0.0.1.dev1+g8c0986255</title><link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="env" href="modelopt.torch.utils.env.html" /><link rel="prev" title="dataset_utils" href="modelopt.torch.utils.dataset_utils.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
   </script><link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=e1a1ceaf" />
@@ -570,7 +570,7 @@ data-aria-dark="Switch to auto color mode">
 <td><p>The plan <a class="reference internal" href="#modelopt.torch.utils.distributed.set_distribution_plan" title="modelopt.torch.utils.distributed.set_distribution_plan"><code class="xref py py-func docutils literal notranslate"><span class="pre">set_distribution_plan()</span></code></a> recorded on <code class="docutils literal notranslate"><span class="pre">model</span></code>, or <code class="docutils literal notranslate"><span class="pre">None</span></code> if none was.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.set_distribution_plan" title="modelopt.torch.utils.distributed.set_distribution_plan"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_distribution_plan</span></code></a></p></td>
-<td><p>Record that <code class="docutils literal notranslate"><span class="pre">model</span></code> is distributed as <code class="docutils literal notranslate"><span class="pre">plan</span></code>, on it and on every submodule.</p></td>
+<td><p>Record that <code class="docutils literal notranslate"><span class="pre">model</span></code> is distributed as <code class="docutils literal notranslate"><span class="pre">plan</span></code>, on it and on every submodule it has now.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.shard_dataloader" title="modelopt.torch.utils.distributed.shard_dataloader"><code class="xref py py-obj docutils literal notranslate"><span class="pre">shard_dataloader</span></code></a></p></td>
 <td><p>Wrap a DataLoader so each rank sees a unique shard.</p></td>
@@ -868,11 +868,22 @@ over, for the all-to-all forwards that quantizer insertion drops to be re-instal
 first forward; any other model passes none. <code class="docutils literal notranslate"><span class="pre">mtq.quantize</span></code> hands the
 <code class="docutils literal notranslate"><span class="pre">forward_loop</span></code> callback an inner module that this closure ignores, calling the captured
 top-level <code class="docutils literal notranslate"><span class="pre">model</span></code> instead so the full distributed forward (and its collectives) runs.</p>
-<p>KV/state caching is disabled for the duration (via <code class="docutils literal notranslate"><span class="pre">_disable_use_cache</span></code>), mirroring the
-single-node <code class="docutils literal notranslate"><span class="pre">_forward_loop</span></code>. This distributed path previously omitted the guard, so it ran
-calibration at <code class="docutils literal notranslate"><span class="pre">config.use_cache</span></code> (default <code class="docutils literal notranslate"><span class="pre">True</span></code>); for hybrid Mamba/attention models
-(e.g. NemotronH) the cache is mutated in-place, which both wastes memory and breaks
-calibration correctness.</p>
+<p>The forwards run without gradients and with KV/state caching disabled (<code class="docutils literal notranslate"><span class="pre">_disable_use_cache</span></code>), as
+the single-node <code class="docutils literal notranslate"><span class="pre">_forward_loop</span></code> runs them: a hybrid Mamba/attention model mutates its cache in
+place.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>Module</em>)</p></li>
+<li><p><strong>dataloader</strong> (<em>DataLoader</em>)</p></li>
+<li><p><strong>device</strong> (<em>device</em><em> | </em><em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>ep_mesh</strong> (<em>DeviceMesh</em><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Callable</em>[[<em>Module</em>], <em>None</em>]</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -881,7 +892,8 @@ calibration correctness.</p>
 <dd><p>Own the run’s process group for the block, and yield this process’s state.</p>
 <p>On a distributed launch (<code class="docutils literal notranslate"><span class="pre">WORLD_SIZE&gt;1</span></code>) this sets the process group up, binding this rank’s
 CUDA device, with <code class="docutils literal notranslate"><span class="pre">timeout</span></code>. It yields this rank’s <a class="reference internal" href="#modelopt.torch.utils.distributed.DistributedState" title="modelopt.torch.utils.distributed.DistributedState"><code class="xref py py-class docutils literal notranslate"><span class="pre">DistributedState</span></code></a>, on that CUDA
-device. A single process sets nothing up and is rank 0 of a run of one, on <code class="docutils literal notranslate"><span class="pre">device</span></code>.</p>
+device, and refuses any other <code class="docutils literal notranslate"><span class="pre">device</span></code>. A single process sets nothing up and is rank 0 of a run
+of one, on <code class="docutils literal notranslate"><span class="pre">device</span></code>.</p>
 <p>On exit, even if the body raises, it destroys the group the run set up: the launch’s, or one the
 body set up, such as the one-rank group a single process’s FSDP2 load shards through. A group
 that was already there when the run began is the caller’s, and is left as it is. A rank whose
@@ -894,6 +906,9 @@ rank never reaches.</p>
 <li><p><strong>timeout</strong> (<em>timedelta</em><em> | </em><em>None</em>)</p></li>
 <li><p><strong>device</strong> (<em>device</em><em> | </em><em>str</em>)</p></li>
 </ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Iterator</em>[<a class="reference internal" href="#modelopt.torch.utils.distributed.DistributedState" title="modelopt.torch.utils.distributed.DistributedState"><em>DistributedState</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1067,10 +1082,11 @@ for any backend that initialized <code class="docutils literal notranslate"><spa
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.utils.distributed.set_distribution_plan">
 <span class="sig-name descname"><span class="pre">set_distribution_plan</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plan</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.set_distribution_plan" title="Link to this definition">#</a></dt>
-<dd><p>Record that <code class="docutils literal notranslate"><span class="pre">model</span></code> is distributed as <code class="docutils literal notranslate"><span class="pre">plan</span></code>, on it and on every submodule.</p>
+<dd><p>Record that <code class="docutils literal notranslate"><span class="pre">model</span></code> is distributed as <code class="docutils literal notranslate"><span class="pre">plan</span></code>, on it and on every submodule it has now.</p>
 <p>Code handed a submodule, such as a VLM’s language model, then reads the same plan as code handed
-the whole model. <code class="docutils literal notranslate"><span class="pre">load_pretrained</span></code> records the plan it loads by; code that distributes a model
-itself records it here before calibrating or exporting the model.</p>
+the whole model; a module added afterwards records none. <code class="docutils literal notranslate"><span class="pre">load_pretrained</span></code> records the plan it
+loads by once the model is built; code that distributes a model itself records it here before
+calibrating or exporting the model.</p>
 <p>A model is distributed once, and its plan recorded once: recording a plan on a model that, or
 any of whose submodules, already records one raises, the same plan included, and leaves the
 model as it was. No code reloads or re-distributes a model it loaded.</p>
@@ -1093,7 +1109,9 @@ model as it was. No code reloads or re-distributes a model it loaded.</p>
 <dd><p>Wrap a DataLoader so each rank sees a unique shard.</p>
 <p>For map-style datasets a <code class="docutils literal notranslate"><span class="pre">DistributedSampler</span></code> is used. <code class="docutils literal notranslate"><span class="pre">drop_last=False</span></code> keeps per-rank batch
 counts equal (else a rank exits calibration early and hangs the others on the per-step collectives),
-at the cost of the sampler repeating up to <code class="docutils literal notranslate"><span class="pre">world_size</span> <span class="pre">-</span> <span class="pre">1</span></code> samples to pad the even split. For
+at the cost of the sampler repeating up to <code class="docutils literal notranslate"><span class="pre">world_size</span> <span class="pre">-</span> <span class="pre">1</span></code> samples to pad the even split. It
+replaces the loader’s sampler, so a shuffling one becomes the rank’s unshuffled share, and one that
+picks samples itself (a subset, or a batch sampler) is refused rather than silently widened. For
 streaming <code class="docutils literal notranslate"><span class="pre">IterableDataset</span></code> datasets (which have no <code class="docutils literal notranslate"><span class="pre">len()</span></code> and so can’t use a sampler) each rank
 strides its own deterministic copy of the stream via <code class="xref py py-class docutils literal notranslate"><span class="pre">_StridedIterableShard</span></code>. Every DataLoader
 worker must see that whole stream: a dataset that splits itself across workers by
@@ -1103,9 +1121,13 @@ prefetch, init fn, generator, …).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
+<li><p><strong>loader</strong> (<em>DataLoader</em>)</p></li>
 <li><p><strong>rank</strong> (<em>int</em>)</p></li>
 <li><p><strong>world_size</strong> (<em>int</em>)</p></li>
 </ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>DataLoader</em></p>
 </dd>
 </dl>
 </dd></dl>
